@@ -515,6 +515,13 @@
                 <button type="button" data-val="ligacao">Print da ligação</button>
               </div>
             </div>
+            <div class="field span-all" id="f_audio_wrap" style="display:none;">
+              <label for="f_audio">Áudio complementar do WhatsApp (opcional)</label>
+              <label class="drop" id="dropAudio" for="f_audio">
+                <span id="dropAudioLabel">Toque para anexar um áudio (opcional)</span>
+                <input type="file" id="f_audio" accept="audio/*" class="visually-hidden">
+              </label>
+            </div>
             <div class="field span-all">
               <label for="f_arquivo">Print/comprovante <span class="req">*</span></label>
               <div class="upload-row">
@@ -596,6 +603,7 @@
     <h3>Detalhes do atendimento</h3>
     <div class="kv" id="modalKv"></div>
     <img id="modalImg" alt="Comprovante do atendimento">
+    <audio id="modalAudio" controls style="width:100%; margin-top:14px; display:none;"></audio>
   </div>
 </div>
 
@@ -644,6 +652,7 @@
 
   let origem = "whatsapp";
   let selectedFile = null;
+  let selectedAudio = null;
   let allRecords = [];
   let desbloqueado = false;
   let listaCarregada = false;
@@ -691,7 +700,24 @@
       document.querySelectorAll("#f_origem button").forEach(b=>b.classList.remove("active"));
       btn.classList.add("active");
       origem = btn.dataset.val;
+      $("f_audio_wrap").style.display = origem === "whatsapp" ? "block" : "none";
+      if(origem !== "whatsapp"){
+        selectedAudio = null;
+        $("f_audio").value = "";
+        $("dropAudioLabel").textContent = "Toque para anexar um áudio (opcional)";
+        $("dropAudio").classList.remove("has-file");
+      }
     });
+  });
+  // origem começa em "whatsapp" por padrão — mostra o campo de áudio já de início
+  $("f_audio_wrap").style.display = "block";
+
+  $("f_audio").addEventListener("change", (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    selectedAudio = file;
+    $("dropAudio").classList.add("has-file");
+    $("dropAudioLabel").textContent = file.name;
   });
 
   // upload / preview
@@ -744,7 +770,7 @@
         <td class="mono">${escapeHtml(r.telefone)}</td>
         <td><span class="code-pill">${escapeHtml(codeLabel)}</span></td>
         <td>${escapeHtml(r.tecnico||"—")}</td>
-        <td><button class="link-btn" data-id="${r._id}">Ver print</button></td>
+        <td><button class="link-btn" data-id="${r._id}">Ver print${r.audio_url ? " 🎧" : ""}</button></td>
       `;
       tbody.appendChild(tr);
     });
@@ -781,6 +807,13 @@
     `;
     $("modalImg").src = r.screenshot_url || "";
     $("modalImg").style.display = r.screenshot_url ? "block" : "none";
+    if(r.audio_url){
+      $("modalAudio").src = r.audio_url;
+      $("modalAudio").style.display = "block";
+    }else{
+      $("modalAudio").src = "";
+      $("modalAudio").style.display = "none";
+    }
     $("modalBg").classList.add("open");
   }
   $("modalClose").addEventListener("click", ()=> $("modalBg").classList.remove("open"));
@@ -946,12 +979,26 @@
       const { data: urlData } = db.storage.from("comprovantes").getPublicUrl(nomeArquivo);
       const screenshotUrl = urlData.publicUrl;
 
+      // 1b) sobe o áudio complementar, se anexado
+      let audioUrl = null;
+      if(selectedAudio){
+        const extAudio = (selectedAudio.name.split(".").pop() || "ogg").toLowerCase();
+        const nomeAudio = `audio-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${extAudio}`;
+        const { error: erroAudio } = await db.storage
+          .from("comprovantes")
+          .upload(nomeAudio, selectedAudio, { cacheControl: "3600", upsert: false });
+        if(erroAudio) throw erroAudio;
+        const { data: audioData } = db.storage.from("comprovantes").getPublicUrl(nomeAudio);
+        audioUrl = audioData.publicUrl;
+      }
+
       // 2) grava o registro na tabela
       const { error: erroInsert } = await db.from("atendimentos").insert({
         cidade, contrato, telefone, cliente,
         data_atendimento: dataAtendimento,
         codigo, origem, tecnico,
-        screenshot_url: screenshotUrl
+        screenshot_url: screenshotUrl,
+        audio_url: audioUrl
       });
       if(erroInsert) throw erroInsert;
 
@@ -961,9 +1008,13 @@
       $("drop").classList.remove("has-file");
       $("dropLabel").textContent = "Toque para escolher a imagem do print";
       selectedFile = null;
+      selectedAudio = null;
+      $("dropAudio").classList.remove("has-file");
+      $("dropAudioLabel").textContent = "Toque para anexar um áudio (opcional)";
       document.querySelectorAll("#f_origem button").forEach(b=>b.classList.remove("active"));
       document.querySelector('#f_origem button[data-val="whatsapp"]').classList.add("active");
       origem = "whatsapp";
+      $("f_audio_wrap").style.display = "block";
       $("tecnico").value = "";
       try{ localStorage.removeItem("atd_tecnico"); }catch(e){}
 
