@@ -482,6 +482,7 @@
           <div class="form-grid">
             <div class="field" style="flex-basis:320px; flex-grow:2;">
               <label>Cidade <span class="req">*</span></label>
+              <input type="text" id="f_cidade_busca" placeholder="Filtrar por DDD ou nome…" style="margin-bottom:6px;">
               <select id="f_cidade" required>
                 <option value="" selected>Selecione…</option>
               </select>
@@ -718,6 +719,22 @@
     selectedAudio = file;
     $("dropAudio").classList.add("has-file");
     $("dropAudioLabel").textContent = file.name;
+  });
+
+  // filtro de cidade por DDD ou nome
+  $("f_cidade_busca").addEventListener("input", ()=>{
+    const termo = $("f_cidade_busca").value.trim().toLowerCase();
+    const sel = $("f_cidade");
+    let opcaoSelecionadaVisivel = true;
+    Array.from(sel.options).forEach(op=>{
+      if(!op.value){ op.hidden = false; return; } // mantém "Selecione…" sempre visível
+      const nome = op.dataset.nome || op.textContent.toLowerCase();
+      const ddd = op.dataset.ddd || "";
+      const bate = !termo || nome.includes(termo) || ddd.startsWith(termo);
+      op.hidden = !bate;
+      if(op.selected && !bate) opcaoSelecionadaVisivel = false;
+    });
+    if(!opcaoSelecionadaVisivel){ sel.value = ""; }
   });
 
   // upload / preview
@@ -1004,6 +1021,8 @@
 
       $("form").reset();
       $("f_data").value = new Date().toISOString().slice(0,10);
+      $("f_cidade_busca").value = "";
+      Array.from($("f_cidade").options).forEach(op=>{ op.hidden = false; });
       $("preview").style.display = "none";
       $("drop").classList.remove("has-file");
       $("dropLabel").textContent = "Toque para escolher a imagem do print";
@@ -1049,7 +1068,7 @@
     try{
       const [tecRes, cidRes, codRes] = await Promise.all([
         db.from("tecnicos").select("nome").eq("ativo", true).order("nome"),
-        db.from("cidades").select("nome").eq("ativo", true).order("nome"),
+        db.from("cidades").select("nome,ddd").eq("ativo", true).order("nome"),
         db.from("codigos_resolucao").select("codigo,descricao").eq("ativo", true).order("codigo")
       ]);
 
@@ -1071,7 +1090,10 @@
         const sel = $("f_cidade");
         cidRes.data.forEach(c=>{
           const op = document.createElement("option");
-          op.value = c.nome; op.textContent = c.nome;
+          op.value = c.nome;
+          op.textContent = c.ddd ? `${c.nome} (${c.ddd})` : c.nome;
+          if(c.ddd) op.dataset.ddd = String(c.ddd);
+          op.dataset.nome = c.nome.toLowerCase();
           sel.appendChild(op);
         });
       }
