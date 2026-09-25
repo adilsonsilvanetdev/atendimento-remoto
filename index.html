@@ -488,11 +488,11 @@
             </div>
             <div class="field" style="flex-basis:130px; flex-grow:0.5;">
               <label>Nº do contrato <span class="req">*</span></label>
-              <input type="text" id="f_contrato" class="mono" required>
+              <input type="text" id="f_contrato" class="mono" inputmode="numeric" pattern="[0-9]*" required>
             </div>
             <div class="field">
               <label>Telefone <span class="req">*</span></label>
-              <input type="tel" id="f_telefone" class="mono" placeholder="(00) 00000-0000" required>
+              <input type="tel" id="f_telefone" class="mono" placeholder="(00) 00000-0000" inputmode="numeric" pattern="[0-9]*" required>
             </div>
             <div class="field">
               <label>Cliente <span class="req">*</span></label>
@@ -721,6 +721,14 @@
   });
 
   // filtro de cidade por DDD ou nome
+  // contrato e telefone: só números
+  $("f_contrato").addEventListener("input", ()=>{
+    $("f_contrato").value = $("f_contrato").value.replace(/\D/g, "");
+  });
+  $("f_telefone").addEventListener("input", ()=>{
+    $("f_telefone").value = $("f_telefone").value.replace(/\D/g, "");
+  });
+
   $("f_cidade_busca").addEventListener("input", ()=>{
     const termo = $("f_cidade_busca").value.trim().toLowerCase();
     const sel = $("f_cidade");
