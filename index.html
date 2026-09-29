@@ -355,6 +355,7 @@
     background:none;border:none;color:var(--accent);cursor:pointer;
     font-size:12.5px; padding:0; font-weight:600;
   }
+  .link-btn-danger{color:var(--danger);}
   .empty{
     padding:36px 10px;
     text-align:center;
@@ -610,7 +611,7 @@
 <div class="modal-bg" id="modalExcluirBg">
   <div class="modal" style="max-width:420px;">
     <button class="modal-close" id="modalExcluirClose" aria-label="Fechar">×</button>
-    <h3>Excluir todos os registros</h3>
+    <h3 id="excluirTitulo">Excluir registros</h3>
     <p id="excluirInfo" style="color:var(--text-2); font-size:14px; margin-bottom:14px;">
       Essa ação apaga permanentemente todos os atendimentos salvos e não pode
       ser desfeita.
@@ -794,12 +795,18 @@
         <td class="mono">${escapeHtml(r.telefone)}</td>
         <td><span class="code-pill">${escapeHtml(codeLabel)}</span></td>
         <td>${escapeHtml(r.tecnico||"—")}</td>
-        <td><button class="link-btn" data-id="${r._id}">Ver print${r.audio_url ? " 🎧" : ""}</button></td>
+        <td>
+          <button class="link-btn" data-id="${r._id}">Ver print${r.audio_url ? " 🎧" : ""}</button>
+          <button class="link-btn link-btn-danger" data-id-excluir="${r._id}" style="margin-left:10px;">Excluir</button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
-    tbody.querySelectorAll(".link-btn").forEach(btn=>{
+    tbody.querySelectorAll(".link-btn[data-id]").forEach(btn=>{
       btn.addEventListener("click", ()=> openModal(btn.dataset.id));
+    });
+    tbody.querySelectorAll("[data-id-excluir]").forEach(btn=>{
+      btn.addEventListener("click", ()=> abrirModalExcluir("um", btn.dataset.idExcluir));
     });
   }
 
@@ -879,10 +886,15 @@
     URL.revokeObjectURL(url);
   });
 
-  // Excluir todos os registros — checkbox de confirmação + senha extra
+  // Excluir um registro ou todos — checkbox de confirmação + senha extra
   // (sem usar confirm()/alert() nativos, por UX — fica tudo dentro da própria tela)
-  $("btnExcluirTudo").addEventListener("click", ()=>{
-    const total = allRecords.length;
+  let modoExclusao = "todos"; // "todos" ou "um"
+  let idExclusaoUnica = null;
+
+  function abrirModalExcluir(modo, id){
+    modoExclusao = modo;
+    idExclusaoUnica = id || null;
+
     $("checkExcluir").checked = false;
     $("checkExcluir").style.display = "";
     $("senhaExcluir").value = "";
@@ -891,20 +903,39 @@
     $("msgExcluirOk").style.display = "none";
     $("btnConfirmarExcluir").style.display = "";
     $("btnConfirmarExcluir").disabled = true;
-    $("btnConfirmarExcluir").textContent = "Excluir tudo";
 
-    if(total === 0){
-      $("excluirInfo").textContent = "Não há registros para excluir no momento.";
-      $("checkExcluir").disabled = true;
-      $("senhaExcluir").disabled = true;
+    if(modo === "um"){
+      const r = allRecords.find(x => x._id === id);
+      $("excluirTitulo").textContent = "Excluir este atendimento";
+      $("btnConfirmarExcluir").textContent = "Excluir registro";
+      if(!r){
+        $("excluirInfo").textContent = "Registro não encontrado (pode já ter sido excluído).";
+        $("checkExcluir").disabled = true;
+        $("senhaExcluir").disabled = true;
+      }else{
+        $("excluirInfo").textContent = `Isso vai apagar permanentemente o atendimento de ${r.cliente || "—"} (contrato ${r.contrato || "—"}, ${fmtData(r.data_atendimento)}). Essa ação não pode ser desfeita.`;
+        $("checkExcluir").disabled = false;
+        $("senhaExcluir").disabled = false;
+      }
     }else{
-      $("excluirInfo").textContent = `Isso vai apagar permanentemente todos os ${total} registros salvos. Essa ação não pode ser desfeita.`;
-      $("checkExcluir").disabled = false;
-      $("senhaExcluir").disabled = false;
+      const total = allRecords.length;
+      $("excluirTitulo").textContent = "Excluir todos os registros";
+      $("btnConfirmarExcluir").textContent = "Excluir tudo";
+      if(total === 0){
+        $("excluirInfo").textContent = "Não há registros para excluir no momento.";
+        $("checkExcluir").disabled = true;
+        $("senhaExcluir").disabled = true;
+      }else{
+        $("excluirInfo").textContent = `Isso vai apagar permanentemente todos os ${total} registros salvos. Essa ação não pode ser desfeita.`;
+        $("checkExcluir").disabled = false;
+        $("senhaExcluir").disabled = false;
+      }
     }
 
     $("modalExcluirBg").classList.add("open");
-  });
+  }
+
+  $("btnExcluirTudo").addEventListener("click", ()=> abrirModalExcluir("todos"));
 
   function fecharModalExcluir(){
     $("modalExcluirBg").classList.remove("open");
@@ -937,15 +968,23 @@
     btn.textContent = "Excluindo…";
 
     let falhas = 0;
-    const ids = allRecords.map(r=>r._id);
-    if(ids.length){
-      const { error } = await db.from("atendimentos").delete().in("id", ids);
-      if(error){ falhas = ids.length; console.error("Falha ao excluir registros", detalharErro(error), error); }
+    if(modoExclusao === "um"){
+      if(idExclusaoUnica){
+        const { error } = await db.from("atendimentos").delete().eq("id", idExclusaoUnica);
+        if(error){ falhas = 1; console.error("Falha ao excluir registro", detalharErro(error), error); }
+      }
+    }else{
+      const ids = allRecords.map(r=>r._id);
+      if(ids.length){
+        const { error } = await db.from("atendimentos").delete().in("id", ids);
+        if(error){ falhas = ids.length; console.error("Falha ao excluir registros", detalharErro(error), error); }
+      }
     }
 
+    const mensagemSucesso = modoExclusao === "um" ? "Registro excluído." : "Todos os registros foram excluídos.";
     if(falhas === 0){
       $("excluirInfo").textContent = "";
-      $("msgExcluirOk").textContent = "Todos os registros foram excluídos.";
+      $("msgExcluirOk").textContent = mensagemSucesso;
       $("msgExcluirOk").style.display = "block";
     }else{
       $("msgExcluirOk").textContent = `Concluído com ${falhas} falha(s) — veja o console (F12) para detalhes.`;
